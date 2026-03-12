@@ -1,0 +1,422 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ==================== ENUMS ====================
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ==================== USER & AUTH ====================
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  password     String
+  firstName    String
+  lastName     String
+  role String @default("TELLER")
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  isActive     Boolean  @default(true)
+  refreshToken String?
+  lastLogin    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  approvedLoans       Loan[]           @relation("LoanApprovedBy")
+  processedLoans      Loan[]           @relation("LoanOfficer")
+  auditLogs           AuditLog[]
+  journalEntries      JournalEntry[]
+  recoveryActions     RecoveryAction[]
+  notifications       Notification[]   @relation("NotificationCreatedBy")
+}
+
+model Branch {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  address   String
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  customers   Customer[]
+  loans       Loan[]
+  leases      Lease[]
+  fds         FixedDeposit[]
+}
+
+// ==================== CUSTOMER ====================
+
+model Customer {
+  id              String     @id @default(cuid())
+  customerNumber  String     @unique
+  firstName       String
+  lastName        String
+  email           String?    @unique
+  phone           String
+  nationalId      String     @unique
+  dateOfBirth     DateTime
+  address         String
+  city            String
+  occupation      String?
+  monthlyIncome   Decimal
+  kycStatus String @default("PENDING")
+  riskLevel String @default("MEDIUM")
+  riskScore       Int        @default(50)
+  creditLimit     Decimal    @default(0)
+  branchId        String
+  branch          Branch     @relation(fields: [branchId], references: [id])
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  loans    Loan[]
+  leases   Lease[]
+  fds      FixedDeposit[]
+  notifications Notification[]
+}
+
+// ==================== LOAN ====================
+
+model Loan {
+  id                String     @id @default(cuid())
+  loanNumber        String     @unique
+  customerId        String
+  customer          Customer   @relation(fields: [customerId], references: [id])
+  branchId          String
+  branch            Branch     @relation(fields: [branchId], references: [id])
+  loanOfficerId     String?
+  loanOfficer       User?      @relation("LoanOfficer", fields: [loanOfficerId], references: [id])
+  approvedById      String?
+  approvedBy        User?      @relation("LoanApprovedBy", fields: [approvedById], references: [id])
+
+  loanType          String     // Personal, Business, Mortgage
+  principalAmount   Decimal
+  interestRate      Decimal
+  termMonths        Int
+  disbursedAmount   Decimal    @default(0)
+  disbursedAt       DateTime?
+  purpose           String?
+  collateral        String?
+  status String @default("DRAFT")
+
+  // Calculated fields
+  emiAmount         Decimal    @default(0)
+  totalPayable      Decimal    @default(0)
+  totalPaid         Decimal    @default(0)
+  outstandingBalance Decimal   @default(0)
+  penaltyAccrued    Decimal    @default(0)
+
+  approvedAt        DateTime?
+  maturityDate      DateTime?
+  closedAt          DateTime?
+  rejectionReason   String?
+  notes             String?
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  installments  LoanInstallment[]
+  repayments    LoanRepayment[]
+  journalEntries JournalEntry[]
+  recoveryCase  RecoveryCase?
+}
+
+model LoanInstallment {
+  id              String            @id @default(cuid())
+  loanId          String
+  loan            Loan              @relation(fields: [loanId], references: [id])
+  installmentNo   Int
+  dueDate         DateTime
+  principalAmount Decimal
+  interestAmount  Decimal
+  penaltyAmount   Decimal           @default(0)
+  totalDue        Decimal
+  paidAmount      Decimal           @default(0)
+  remainingAmount Decimal
+  status String @default("PENDING")
+  paidAt          DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  repayments LoanRepayment[]
+}
+
+model LoanRepayment {
+  id             String   @id @default(cuid())
+  loanId         String
+  loan           Loan     @relation(fields: [loanId], references: [id])
+  installmentId  String?
+  installment    LoanInstallment? @relation(fields: [installmentId], references: [id])
+  amount         Decimal
+  principalPaid  Decimal
+  interestPaid   Decimal
+  penaltyPaid    Decimal  @default(0)
+  paymentMethod  String   @default("CASH")
+  reference      String?
+  notes          String?
+  createdAt      DateTime @default(now())
+}
+
+// ==================== LEASE ====================
+
+model Asset {
+  id             String   @id @default(cuid())
+  assetCode      String   @unique
+  name           String
+  description    String?
+  purchaseValue  Decimal
+  currentValue   Decimal
+  usefulLifeYears Int
+  depreciationRate Decimal
+  category       String
+  isAvailable    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  leases Lease[]
+}
+
+model Lease {
+  id                String      @id @default(cuid())
+  leaseNumber       String      @unique
+  customerId        String
+  customer          Customer    @relation(fields: [customerId], references: [id])
+  assetId           String
+  asset             Asset       @relation(fields: [assetId], references: [id])
+  branchId          String
+  branch            Branch      @relation(fields: [branchId], references: [id])
+
+  leaseType         String      // Financial, Operating
+  leaseAmount       Decimal
+  downPayment       Decimal     @default(0)
+  interestRate      Decimal
+  termMonths        Int
+  monthlyInstallment Decimal
+  totalPayable      Decimal
+  totalPaid         Decimal     @default(0)
+  outstandingBalance Decimal
+  status String @default("DRAFT")
+
+  startDate         DateTime?
+  endDate           DateTime?
+  closedAt          DateTime?
+  notes             String?
+
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  installments LeaseInstallment[]
+  journalEntries JournalEntry[]
+}
+
+model LeaseInstallment {
+  id              String            @id @default(cuid())
+  leaseId         String
+  lease           Lease             @relation(fields: [leaseId], references: [id])
+  installmentNo   Int
+  dueDate         DateTime
+  principalAmount Decimal
+  interestAmount  Decimal
+  totalDue        Decimal
+  paidAmount      Decimal           @default(0)
+  status String @default("PENDING")
+  paidAt          DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+// ==================== FIXED DEPOSIT ====================
+
+model FixedDeposit {
+  id               String    @id @default(cuid())
+  fdNumber         String    @unique
+  customerId       String
+  customer         Customer  @relation(fields: [customerId], references: [id])
+  branchId         String
+  branch           Branch    @relation(fields: [branchId], references: [id])
+
+  principalAmount  Decimal
+  interestRate     Decimal
+  termMonths       Int
+  status String @default("ACTIVE")
+
+  startDate        DateTime
+  maturityDate     DateTime
+  maturedAt        DateTime?
+  renewedAt        DateTime?
+  withdrawnAt      DateTime?
+
+  interestAccrued  Decimal   @default(0)
+  maturityAmount   Decimal
+  penaltyRate      Decimal   @default(0.02)  // premature withdrawal penalty
+  autoRenew        Boolean   @default(false)
+
+  parentFdId       String?   // if this is a renewal
+  notes            String?
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  journalEntries   JournalEntry[]
+}
+
+// ==================== GENERAL LEDGER ====================
+
+model Account {
+  id            String      @id @default(cuid())
+  code          String      @unique
+  name          String
+  description   String?
+  type String
+  parentId      String?
+  parent        Account?    @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children      Account[]   @relation("AccountHierarchy")
+  isActive      Boolean     @default(true)
+  normalBalance String      @default("DEBIT")  // DEBIT or CREDIT
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  debitLines  JournalLine[] @relation("DebitAccount")
+  creditLines JournalLine[] @relation("CreditAccount")
+}
+
+model JournalEntry {
+  id              String          @id @default(cuid())
+  entryNumber     String          @unique
+  description     String
+  transactionType String @default("GENERAL")
+  reference       String?
+  amount          Decimal
+  isPosted        Boolean         @default(true)
+  isReversed      Boolean         @default(false)
+  reversalOfId    String?
+  postedById      String
+  postedBy        User            @relation(fields: [postedById], references: [id])
+
+  loanId          String?
+  loan            Loan?           @relation(fields: [loanId], references: [id])
+  leaseId         String?
+  lease           Lease?          @relation(fields: [leaseId], references: [id])
+  fdId            String?
+  fd              FixedDeposit?   @relation(fields: [fdId], references: [id])
+
+  createdAt       DateTime        @default(now())
+
+  lines JournalLine[]
+}
+
+model JournalLine {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id])
+  debitAccountId String?
+  debitAccount   Account?     @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccountId String?
+  creditAccount  Account?     @relation("CreditAccount", fields: [creditAccountId], references: [id])
+  amount         Decimal
+  description    String?
+  createdAt      DateTime     @default(now())
+}
+
+// ==================== RECOVERY ====================
+
+model RecoveryCase {
+  id            String         @id @default(cuid())
+  caseNumber    String         @unique
+  loanId        String         @unique
+  loan          Loan           @relation(fields: [loanId], references: [id])
+  status String @default("OPEN")
+  overdueAmount Decimal
+  overdueDays   Int
+  recoveredAmount Decimal      @default(0)
+  settlementAmount Decimal?
+  notes         String?
+  closedAt      DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  actions RecoveryAction[]
+}
+
+model RecoveryAction {
+  id             String       @id @default(cuid())
+  caseId         String
+  case           RecoveryCase @relation(fields: [caseId], references: [id])
+  actionType     String       // REMINDER, VISIT, LEGAL_NOTICE, SETTLEMENT
+  description    String
+  performedById  String
+  performedBy    User         @relation(fields: [performedById], references: [id])
+  amount         Decimal?
+  createdAt      DateTime     @default(now())
+}
+
+// ==================== NOTIFICATIONS ====================
+
+model Notification {
+  id          String              @id @default(cuid())
+  customerId  String?
+  customer    Customer?           @relation(fields: [customerId], references: [id])
+  type String
+  trigger String @default("GENERAL")
+  status String @default("PENDING")
+  recipient   String              // phone/email/userId
+  subject     String?
+  message     String
+  sentAt      DateTime?
+  failureReason String?
+  createdById String?
+  createdBy   User?               @relation("NotificationCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+}
+
+// ==================== AUDIT ====================
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entity     String
+  entityId   String?
+  oldValues  String?
+  newValues  String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+}
